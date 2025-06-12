@@ -82,6 +82,14 @@ ipcMain.handle('get-server-status', async (event, serverName) => {
   return await sshOps.getServerStatus(serverName);
 });
 
+ipcMain.handle('get-batch-server-status', async (event, host) => {
+  return await sshOps.getBatchServerStatus(host);
+});
+
+ipcMain.handle('get-servers-by-host', (event) => {
+  return sshOps.getServersByHost();
+});
+
 ipcMain.handle('get-server-log', async (event, serverName) => {
   const result = await sshOps.getServerLog(serverName);
   return result.sshDown ? { success: false, sshDown: true } : result;

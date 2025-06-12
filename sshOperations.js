@@ -7,6 +7,7 @@ class SSHOperations {
     this.config = {};
     this.sshKeyPath = sshKeyPath;
     this.configPath = configPath;
+    this.screenSessionCache = {}; // Cache for screen sessions by host
   }
 
   async initialize() {
@@ -150,14 +151,112 @@ class SSHOperations {
 
   async getServerStatus(serverName) {
     const serverConfig = this.config[serverName];
+    
+    // Use the cached screen sessions if they exist for this host and are recent
+    const host = serverConfig.host;
+    const cachedData = this.screenSessionCache && this.screenSessionCache[host];
+    const now = Date.now();
+    
+    if (cachedData && (now - cachedData.timestamp) < 5000) { // Cache valid for 5 seconds
+      return {
+        success: true,
+        status: cachedData.sessions.includes(serverConfig.screen_name)
+      };
+    }
+    
     const statusCommand = 'screen -ls';
     const result = await this.executeCommand(serverName, statusCommand);
+    
     if (!result.success) {
       return { success: false, sshDown: true };
     }
-    return { success: true, status: result.output.includes(serverConfig.screen_name) };
+    
+    // Parse and cache all screen sessions for this host
+    if (!this.screenSessionCache) {
+      this.screenSessionCache = {};
+    }
+    
+    // Extract all session names from the screen -ls output
+    const screenSessions = [];
+    const lines = result.output.split('\n');
+    for (const line of lines) {
+      // Look for lines containing screen session info
+      const match = line.match(/\d+\.([^\s\t]+)/); // Extracts session name
+      if (match && match[1]) {
+        screenSessions.push(match[1]);
+      }
+    }
+    
+    // Cache the results
+    this.screenSessionCache[host] = {
+      timestamp: now,
+      sessions: screenSessions
+    };
+    
+    return {
+      success: true,
+      status: screenSessions.includes(serverConfig.screen_name)
+    };
   }
 
+  // Get status for all servers on a given host in one call
+  async getBatchServerStatus(host) {
+    // Find a server from this host to execute the command
+    const serverName = Object.keys(this.config).find(name => 
+      this.config[name].host === host
+    );
+    
+    if (!serverName) {
+      return { success: false, error: `No server configured for host ${host}` };
+    }
+    
+    const statusCommand = 'screen -ls';
+    const result = await this.executeCommand(serverName, statusCommand);
+    
+    if (!result.success) {
+      return { success: false, sshDown: true, host };
+    }
+    
+    // Extract all session names from the screen -ls output
+    const screenSessions = [];
+    const lines = result.output.split('\n');
+    for (const line of lines) {
+      const match = line.match(/\d+\.([^\s\t]+)/); // Extracts session name
+      if (match && match[1]) {
+        screenSessions.push(match[1]);
+      }
+    }
+    
+    // Cache the results
+    const now = Date.now();
+    if (!this.screenSessionCache) {
+      this.screenSessionCache = {};
+    }
+    this.screenSessionCache[host] = {
+      timestamp: now,
+      sessions: screenSessions
+    };
+    
+    return { success: true, host, sessions: screenSessions };
+  }
+  
+  // Group all servers by host for efficient batch checking
+  getServersByHost() {
+    const hostMap = {};
+    
+    Object.entries(this.config).forEach(([serverName, serverConfig]) => {
+      if (!serverConfig.active) return;
+      
+      const host = serverConfig.host;
+      if (!hostMap[host]) {
+        hostMap[host] = [];
+      }
+      hostMap[host].push(serverName);
+    });
+    
+    return hostMap;
+  }
+  
   async getServerLog(serverName, lines = 200) {
     const serverConfig = this.config[serverName];
     const logPath = path.join('.afl', `${serverConfig.screen_name}.screenlog`);

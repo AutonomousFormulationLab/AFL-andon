@@ -114,27 +114,76 @@ async function checkHttpEndpoint(serverName) {
 
 async function updateServerStatus(serverName) {
   try {
+    // For individual status updates (e.g. after server control operations),
+    // we still use direct status check
     const result = await ipcRenderer.invoke('get-server-status', serverName);
     const httpResult = await checkHttpEndpoint(serverName);
     
-    const screenStatusElement = document.getElementById(`${serverName}-screen-status`);
-    const httpStatusElement = document.getElementById(`${serverName}-http-status`);
-    
-    if (screenStatusElement) {
-      if (result.sshDown) {
-        screenStatusElement.textContent = 'SSH DOWN';
-        screenStatusElement.className = 'status-indicator status-down';
-      } else {
-        screenStatusElement.textContent = result.status ? 'SCREEN ACTIVE' : 'SCREEN INACTIVE';
-        screenStatusElement.className = `status-indicator ${result.status ? 'status-up' : 'status-down'}`;
-      }
-    }
-    if (httpStatusElement) {
-      httpStatusElement.textContent = httpResult ? 'HTTP UP' : 'HTTP DOWN';
-      httpStatusElement.className = `status-indicator ${httpResult ? 'status-up' : 'status-down'}`;
-    }
+    updateServerStatusUI(serverName, result, httpResult);
   } catch (error) {
     console.error(`Error getting status for ${serverName}:`, error);
+  }
+}
+
+// Update the UI with status information
+function updateServerStatusUI(serverName, screenResult, httpResult) {
+  const screenStatusElement = document.getElementById(`${serverName}-screen-status`);
+  const httpStatusElement = document.getElementById(`${serverName}-http-status`);
+  
+  if (screenStatusElement) {
+    if (screenResult.sshDown) {
+      screenStatusElement.textContent = 'SSH DOWN';
+      screenStatusElement.className = 'status-indicator status-down';
+    } else {
+      screenStatusElement.textContent = screenResult.status ? 'SCREEN ACTIVE' : 'SCREEN INACTIVE';
+      screenStatusElement.className = `status-indicator ${screenResult.status ? 'status-up' : 'status-down'}`;
+    }
+  }
+  
+  if (httpStatusElement) {
+    httpStatusElement.textContent = httpResult ? 'HTTP UP' : 'HTTP DOWN';
+    httpStatusElement.className = `status-indicator ${httpResult ? 'status-up' : 'status-down'}`;
+  }
+}
+
+// Batch update server statuses by host
+async function batchUpdateServerStatuses() {
+  try {
+    // Get servers grouped by host
+    const serversByHost = await ipcRenderer.invoke('get-servers-by-host');
+    
+    // For each host, make a single batch status check
+    for (const [host, servers] of Object.entries(serversByHost)) {
+      const batchResult = await ipcRenderer.invoke('get-batch-server-status', host);
+      
+      if (!batchResult.success) {
+        // If SSH is down for this host, update all servers on this host
+        servers.forEach(serverName => {
+          updateServerStatusUI(serverName, { sshDown: true }, false);
+        });
+        continue;
+      }
+      
+      // For each server on this host, update its status based on the batch result
+      const sessions = batchResult.sessions;
+      
+      for (const serverName of servers) {
+        const serverConfig = config[serverName];
+        const screenStatus = {
+          success: true,
+          status: sessions.includes(serverConfig.screen_name),
+          sshDown: false
+        };
+        
+        // Check HTTP endpoint for each server individually
+        const httpResult = await checkHttpEndpoint(serverName);
+        
+        // Update the UI
+        updateServerStatusUI(serverName, screenStatus, httpResult);
+      }
+    }
+  } catch (error) {
+    console.error('Error in batch status update:', error);
   }
 }
 
@@ -533,10 +582,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Update statuses every 5 seconds
+  // Update statuses every 5 seconds using batch updates
   setInterval(() => {
     if (config) {
-      Object.keys(config).forEach(updateServerStatus);
+      batchUpdateServerStatuses(); // Use the new batch update function
     }
   }, 5000);
 });
