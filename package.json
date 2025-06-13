@@ -22,7 +22,7 @@
     "url": "https://github.com/pbeaucage/AFL-andon/issues"
   },
   "homepage": "https://github.com/pbeaucage/AFL-andon#readme",
-  "engines": {
+    "@xterm/addon-fit": "^0.10.0"
     "node": ">=20"
   },
   "dependencies": {
