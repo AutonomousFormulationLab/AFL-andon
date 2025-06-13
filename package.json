@@ -9,14 +9,17 @@
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux"
+    "build:linux": "electron-builder --linux",
+    "check-package": "node scripts/validate-package.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pbeaucage/AFL-andon.git"
   },
-  "author": {"name": "Peter Beaucage",
-            "email":"peter.beaucage@nist.gov" },
+  "author": {
+    "name": "Peter Beaucage",
+    "email": "peter.beaucage@nist.gov"
+  },
   "license": "NIST-PD-fallback",
   "bugs": {
     "url": "https://github.com/pbeaucage/AFL-andon/issues"
@@ -26,15 +29,16 @@
     "node": ">=20"
   },
   "dependencies": {
-    "fs-extra": "^11.1.1",
-    "node-fetch": "^2.7.0",
+    "fs-extra": "^11.3.0",
+    "node-fetch": "^3.3.2",
+    "ssh2": "^1.16.0",
+    "@xterm/xterm": "^5.5.0",
     "ssh2": "^1.15.0",
-    "@xterm/xterm": "^5.3.0",
-    "@xterm/addon-fit": "^0.8.0"
+    "@xterm/addon-fit": "^0.10.0"
   },
   "devDependencies": {
-    "electron": "^24.3.0",
-    "electron-builder": "^25.0.5"
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12"
   },
   "build": {
     "appId": "gov.nist.AFL-andon",
