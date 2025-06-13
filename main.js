@@ -2,7 +2,6 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 
 const { Client } = require('ssh2');  // Correct import for ssh2
-const SSH2 = require('ssh2');
 const path = require('path');
 const fs = require('fs').promises;
 const SSHOperations = require('./sshOperations');
