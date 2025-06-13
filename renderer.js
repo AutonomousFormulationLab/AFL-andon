@@ -1,7 +1,7 @@
 // renderer.js (Renderer process)
 const { ipcRenderer } = require('electron');
-const { Terminal } = require('xterm');
-const { FitAddon } = require('xterm-addon-fit');
+const { Terminal } = require('@xterm/xterm');
+const { FitAddon } = require('@xterm/addon-fit');
 const fetch = require('node-fetch');
 
 let config;
