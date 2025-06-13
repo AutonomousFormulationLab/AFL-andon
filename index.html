@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="node_modules/xterm/css/xterm.css" />
+    <!-- Updated path for xterm after package moved to @xterm scope -->
+    <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
     <title>Server Control Panel</title>
     <style>
         body {
@@ -496,8 +497,9 @@
         </div>
     </div>
 
-    <script src="node_modules/xterm/lib/xterm.js"></script>
-    <script src="node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <!-- Updated script paths for @xterm packages -->
+    <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
    
     <script src="renderer.js"></script>
 </body>
