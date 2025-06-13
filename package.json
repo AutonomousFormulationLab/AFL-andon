@@ -28,6 +28,7 @@
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
     "fs-extra": "^11.3.0",
     "node-fetch": "^3.3.2",
     "ssh2": "^1.16.0",
