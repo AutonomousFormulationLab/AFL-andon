@@ -109,12 +109,8 @@ async function fetchQueueState(serverName) {
       return { ok: false, state: null };
     }
     let state;
-    try {
-      const data = await response.json();
-      state = data.state || data;
-    } catch (err) {
-      state = (await response.text()).trim();
-    }
+    state = (await response.text()).trim();
+    
     return { ok: true, state };
   } catch (error) {
     console.error(`Queue state fetch failed for ${serverName}:`, error);
@@ -506,7 +502,6 @@ async function addServer(serverName, serverConfig) {
   await ipcRenderer.invoke('add-server', { serverName, serverConfig });
   await loadConfig();
   renderServers();
-}
 
   let tabElement = document.querySelector(`.tab-item[data-server="${activeTab}"]`);
   if (!tabElement) {
