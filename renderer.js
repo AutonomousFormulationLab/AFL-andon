@@ -308,8 +308,8 @@ function openAndonPanel() {
 
 function openServerWebview(serverName) {
   const serverConfig = config[serverName];
+  setActiveTab(serverName);
   const webview = document.getElementById('server-webview');
-  const container = document.getElementById('webview-container');
   webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/`;
   container.style.display = 'flex';
   activeTab = serverName;

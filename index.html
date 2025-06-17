@@ -70,12 +70,15 @@
         #content {
             flex: 1;
             padding: 20px;
-            overflow: auto;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
 
         #webview-container {
             display: none;
-            height: 100%;
+            flex: 1;
             flex-direction: column;
         }
 
@@ -89,13 +92,16 @@
         }
 
         #server-webview {
-            flex-grow: 1;
+            flex: 1;
+            width: 100%;
+            height: 100%;
         }
 
         #andon-panel {
             height: 100%;
             display: flex;
             flex-direction: column;
+            flex: 1;
         }
 
         #app {
