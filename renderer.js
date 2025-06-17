@@ -2,8 +2,16 @@
 const { ipcRenderer } = require('electron');
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
-const fetch = require('node-fetch');
-
+// Use the built-in fetch in recent Node versions. node-fetch remains as a
+// fallback for older environments but may throw if imported directly.
+let fetchFn;
+try {
+  // Prefer global fetch if available
+  fetchFn = global.fetch || require('node-fetch');
+} catch (err) {
+  // `require` will fail for ESM-only node-fetch; fall back to global
+  fetchFn = global.fetch;
+}
 let config;
 let editingServer = null;
 
@@ -11,6 +19,8 @@ let sshStream;
 
 let terminal;
 let currentServerName;
+let activeTab = null;
+let inactiveExpanded = false;
 
 async function joinServer(serverName) {
   try {
@@ -100,16 +110,27 @@ async function loadConfig() {
 async function saveConfig() {
   await ipcRenderer.invoke('save-config', config);
 }
-async function checkHttpEndpoint(serverName) {
+
+async function fetchQueueState(serverName) {
   const serverConfig = config[serverName];
-  const url = `http://${serverConfig.host}:${serverConfig.httpPort}/get_server_time`;
+  const url = `http://${serverConfig.host}:${serverConfig.httpPort}/queue_state`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 500);
   try {
-    const response = await fetch(url, { timeout: 5000 });
-    return response.ok;
-  } catch (error) {
-    console.error(`HTTP check failed for ${serverName}:`, error);
-    return false;
-  }
+    const response = await fetchFn(url, { signal: controller.signal });
+    if (!response.ok) {
+      return { ok: false, state: null };
+    }
+    let state;
+      try {
+        state = (await response.text()).trim();
+      } catch (_) {
+        state = null;
+      }
+      return { ok: true, state };
+  } finally {
+    clearTimeout(timer);
+}
 }
 
 async function updateServerStatus(serverName) {
@@ -117,16 +138,16 @@ async function updateServerStatus(serverName) {
     // For individual status updates (e.g. after server control operations),
     // we still use direct status check
     const result = await ipcRenderer.invoke('get-server-status', serverName);
-    const httpResult = await checkHttpEndpoint(serverName);
-    
-    updateServerStatusUI(serverName, result, httpResult);
+    const queueResult = await fetchQueueState(serverName);
+
+    updateServerStatusUI(serverName, result, queueResult);
   } catch (error) {
     console.error(`Error getting status for ${serverName}:`, error);
   }
 }
 
 // Update the UI with status information
-function updateServerStatusUI(serverName, screenResult, httpResult) {
+function updateServerStatusUI(serverName, screenResult, queueResult) {
   const screenStatusElement = document.getElementById(`${serverName}-screen-status`);
   const httpStatusElement = document.getElementById(`${serverName}-http-status`);
   
@@ -141,19 +162,33 @@ function updateServerStatusUI(serverName, screenResult, httpResult) {
   }
   
   if (httpStatusElement) {
-    httpStatusElement.textContent = httpResult ? 'HTTP UP' : 'HTTP DOWN';
-    httpStatusElement.className = `status-indicator ${httpResult ? 'status-up' : 'status-down'}`;
+    if (queueResult.ok) {
+      httpStatusElement.textContent = queueResult.state;
+      httpStatusElement.className = 'status-indicator status-up';
+    } else {
+      httpStatusElement.textContent = 'UNREACHABLE';
+      httpStatusElement.className = 'status-indicator status-down';
+    }
   }
+
+  updateTabStatus(serverName, queueResult);
 }
 
 // Batch update server statuses by host
 async function batchUpdateServerStatuses() {
   try {
-    // Get servers grouped by host
-    const serversByHost = await ipcRenderer.invoke('get-servers-by-host');
-    
-    // For each host, make a single batch status check
-    for (const [host, servers] of Object.entries(serversByHost)) {
+    // Get servers grouped by host, *but keep only active servers*.
+    const allByHost   = await ipcRenderer.invoke('get-servers-by-host');
+    const activeByHost = {};
+
+    for (const [host, names] of Object.entries(allByHost)) {
+      const activeNames = names.filter(name => config[name].active);
+      if (activeNames.length) activeByHost[host] = activeNames;
+    }
+    // Nothing active?  Just bail out early.
+    if (Object.keys(activeByHost).length === 0) return;
+
+    for (const [host, servers] of Object.entries(activeByHost)) {
       const batchResult = await ipcRenderer.invoke('get-batch-server-status', host);
       
       if (!batchResult.success) {
@@ -175,11 +210,11 @@ async function batchUpdateServerStatuses() {
           sshDown: false
         };
         
-        // Check HTTP endpoint for each server individually
-        const httpResult = await checkHttpEndpoint(serverName);
-        
+        // Fetch queue state for each server individually
+        const queueResult = await fetchQueueState(serverName);
+
         // Update the UI
-        updateServerStatusUI(serverName, screenStatus, httpResult);
+        updateServerStatusUI(serverName, screenStatus, queueResult);
       }
     }
   } catch (error) {
@@ -236,6 +271,91 @@ async function viewServerLog(serverName) {
 function closeLogModal() {
   const logModal = document.getElementById('log-modal');
   logModal.style.display = 'none';
+}
+
+function createServerTabs() {
+  const tabList = document.getElementById('tab-list');
+  tabList.innerHTML = '';
+  const andonLi = document.createElement('li');
+  andonLi.className = 'tab-item';
+  andonLi.dataset.server = 'andon';
+  const andonIcon = document.createElement('div');
+  andonIcon.className = 'tab-icon';
+  andonIcon.textContent = '🚥';
+  andonLi.appendChild(andonIcon);
+  andonLi.onclick = openAndonPanel;
+  tabList.appendChild(andonLi);
+  Object.keys(config).forEach(serverName => {
+    const serverConfig = config[serverName];
+    if (!serverConfig.active) return; // skip disabled servers
+    const li = document.createElement('li');
+    li.className = 'tab-item';
+    li.dataset.server = serverName;
+    const icon = document.createElement('div');
+    icon.className = 'tab-icon status-red';
+    icon.textContent = serverConfig.icon || serverName.charAt(0).toUpperCase();
+    li.appendChild(icon);
+    li.title = serverName;
+    li.onclick = () => openServerWebview(serverName);
+    tabList.appendChild(li);
+  });
+}
+
+function updateTabStatus(serverName, queueResult) {
+  const tab = document.querySelector(`.tab-item[data-server="${serverName}"] .tab-icon`);
+  if (!tab) return;
+  tab.classList.remove('status-green','status-blue','status-yellow','status-red');
+  let cls = 'status-red';
+  if (queueResult.ok) {
+    switch ((queueResult.state || '').toLowerCase()) {
+      case 'paused':
+        cls = 'status-yellow';
+        break;
+      case 'active':
+        cls = 'status-blue';
+        break;
+      case 'ready':
+        cls = 'status-green';
+        break;
+      default:
+        cls = 'status-red';
+    }
+  }
+  tab.classList.add(cls);
+}
+
+function setActiveTab(name) {
+  activeTab = name;
+  document.querySelectorAll('.tab-item').forEach(item => item.classList.remove('selected'));
+  const tab = document.querySelector(`.tab-item[data-server="${name}"]`);
+  if (tab) tab.classList.add('selected');
+  const andon = document.getElementById('andon-panel');
+  const webviewContainer = document.getElementById('webview-container');
+  if (name === 'andon') {
+    webviewContainer.style.display = 'none';
+    andon.style.display = 'block';
+  } else {
+    andon.style.display = 'none';
+    webviewContainer.style.display = 'flex';
+  }
+}
+
+function openAndonPanel() {
+  const webview = document.getElementById('server-webview');
+  webview.src = '';
+  setActiveTab('andon');
+}
+
+function openServerWebview(serverName) {
+  const serverConfig = config[serverName];
+  setActiveTab(serverName);
+  const webview = document.getElementById('server-webview');
+  webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/`;
+  activeTab = serverName;
+}
+
+function closeServerWebview() {
+  openAndonPanel();
 }
 
 
@@ -405,7 +525,12 @@ async function addServer(serverName, serverConfig) {
   renderServers();
 }
 
-async function updateServer(serverName, serverConfig) {
+ async function updateServer(serverName, serverConfig) {
+  let tabElement = document.querySelector(`.tab-item[data-server="${activeTab}"]`);
+  if (!tabElement) {
+    activeTab = 'andon';
+    setActiveTab(activeTab);
+  }
   await ipcRenderer.invoke('update-server', { serverName, serverConfig });
   await loadConfig();
   renderServers();
@@ -424,9 +549,11 @@ async function toggleServerActive(serverName) {
 
 function renderServers() {
   const appContainer = document.getElementById('app');
-  
+
   // Clear existing content
   appContainer.innerHTML = '';
+  createServerTabs();
+  setActiveTab(activeTab || 'andon');
 
   // Sort servers: active first, then alphabetically
   const sortedServers = Object.keys(config).sort((a, b) => {
@@ -450,13 +577,12 @@ function renderServers() {
   const inactiveHeader = document.createElement('div');
   inactiveHeader.id = 'inactive-servers-header';
   inactiveHeader.className = 'inactive-servers-header';
-  inactiveHeader.innerHTML = `<span class="arrow">▶</span> Inactive Servers (${inactiveServers.length})`;
-  inactiveHeader.onclick = toggleInactiveServers;
+  inactiveHeader.innerHTML = `<span class="arrow">${inactiveExpanded ? '▼' : '▶'}</span> Inactive Servers (${inactiveServers.length})`;
   appContainer.appendChild(inactiveHeader);
 
   const inactiveContent = document.createElement('div');
   inactiveContent.id = 'inactive-servers-content';
-  inactiveContent.style.display = 'none';
+  inactiveContent.style.display = inactiveExpanded ? 'grid' : 'none';
   appContainer.appendChild(inactiveContent);
 
   inactiveServers.forEach(serverName => {
@@ -472,7 +598,8 @@ function renderServers() {
 function toggleInactiveServers() {
   const content = document.getElementById('inactive-servers-content');
   const arrow = document.querySelector('#inactive-servers-header .arrow');
-  if (content.style.display === 'none' || content.style.display === '') {
+  inactiveExpanded = !inactiveExpanded;
+  if (inactiveExpanded) {
     content.style.display = 'grid';
     arrow.textContent = '▼';
   } else {
@@ -558,7 +685,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('add-server-btn').addEventListener('click', () => openServerModal());
   document.querySelector('.modal .close').addEventListener('click', closeServerModal);
   document.getElementById('server-form').addEventListener('submit', handleServerFormSubmit);
-  document.getElementById('inactive-servers-header').addEventListener('click', toggleInactiveServers);
   // document.getElementById('import-config-btn').addEventListener('click', importConfig);
   // document.getElementById('import-ssh-key-btn').addEventListener('click', importSSHKey);
   document.getElementById('server-type').addEventListener('change', updateServerTypeFields);
@@ -566,9 +692,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('save-config-btn').addEventListener('click', saveConfig);
   document.getElementById('set-ssh-key-path-btn').addEventListener('click', setSshKeyPath);
 
+  document.getElementById('webview-back').addEventListener('click', () => {
+    const wv = document.getElementById('server-webview');
+    if (wv.canGoBack()) wv.goBack();
+  });
+  document.getElementById('webview-forward').addEventListener('click', () => {
+    const wv = document.getElementById('server-webview');
+    if (wv.canGoForward()) wv.goForward();
+  });
+  document.getElementById('webview-refresh').addEventListener('click', () => {
+    document.getElementById('server-webview').reload();
+  });
+
   document.querySelector('.close-log').addEventListener('click', closeLogModal);
 
   document.querySelector('.close-terminal').addEventListener('click', closeTerminalModal);
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#inactive-servers-header')) {
+      toggleInactiveServers();
+    }
+  });
 
   window.onclick = function(event) {
     const termModal = document.getElementById('terminal-modal');
@@ -582,10 +726,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Update statuses every 5 seconds using batch updates
-  setInterval(() => {
-    if (config) {
-      batchUpdateServerStatuses(); // Use the new batch update function
+  let statusJobRunning = false;
+
+  setInterval(async () => {
+    if (statusJobRunning || !config) return;
+    statusJobRunning = true;
+    try {
+      await batchUpdateServerStatuses();
+    } finally {
+      statusJobRunning = false;
     }
-  }, 5000);
+  }, 500);   // 2-second rhythm
 });
