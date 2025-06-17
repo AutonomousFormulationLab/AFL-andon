@@ -37,10 +37,11 @@ async function createWindow() {
     width: 800,
     height: 600,
     icon: path.join(__dirname, 'assets', 'icons', 'png', '256x256.png'), // Use PNG for all platforms in dev
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        webviewTag: true
+      }
   });
 
   await mainWindow.loadFile('index.html');
