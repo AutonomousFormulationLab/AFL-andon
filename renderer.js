@@ -100,15 +100,25 @@ async function loadConfig() {
 async function saveConfig() {
   await ipcRenderer.invoke('save-config', config);
 }
-async function checkHttpEndpoint(serverName) {
+async function fetchQueueState(serverName) {
   const serverConfig = config[serverName];
-  const url = `http://${serverConfig.host}:${serverConfig.httpPort}/get_server_time`;
+  const url = `http://${serverConfig.host}:${serverConfig.httpPort}/queue_state`;
   try {
     const response = await fetch(url, { timeout: 5000 });
-    return response.ok;
+    if (!response.ok) {
+      return { ok: false, state: null };
+    }
+    let state;
+    try {
+      const data = await response.json();
+      state = data.state || data;
+    } catch (err) {
+      state = (await response.text()).trim();
+    }
+    return { ok: true, state };
   } catch (error) {
-    console.error(`HTTP check failed for ${serverName}:`, error);
-    return false;
+    console.error(`Queue state fetch failed for ${serverName}:`, error);
+    return { ok: false, state: null };
   }
 }
 
@@ -117,16 +127,16 @@ async function updateServerStatus(serverName) {
     // For individual status updates (e.g. after server control operations),
     // we still use direct status check
     const result = await ipcRenderer.invoke('get-server-status', serverName);
-    const httpResult = await checkHttpEndpoint(serverName);
-    
-    updateServerStatusUI(serverName, result, httpResult);
+    const queueResult = await fetchQueueState(serverName);
+
+    updateServerStatusUI(serverName, result, queueResult);
   } catch (error) {
     console.error(`Error getting status for ${serverName}:`, error);
   }
 }
 
 // Update the UI with status information
-function updateServerStatusUI(serverName, screenResult, httpResult) {
+function updateServerStatusUI(serverName, screenResult, queueResult) {
   const screenStatusElement = document.getElementById(`${serverName}-screen-status`);
   const httpStatusElement = document.getElementById(`${serverName}-http-status`);
   
@@ -141,11 +151,16 @@ function updateServerStatusUI(serverName, screenResult, httpResult) {
   }
   
   if (httpStatusElement) {
-    httpStatusElement.textContent = httpResult ? 'HTTP UP' : 'HTTP DOWN';
-    httpStatusElement.className = `status-indicator ${httpResult ? 'status-up' : 'status-down'}`;
+    if (queueResult.ok) {
+      httpStatusElement.textContent = queueResult.state;
+      httpStatusElement.className = 'status-indicator status-up';
+    } else {
+      httpStatusElement.textContent = 'UNREACHABLE';
+      httpStatusElement.className = 'status-indicator status-down';
+    }
   }
 
-  updateTabStatus(serverName, screenResult, httpResult);
+  updateTabStatus(serverName, queueResult);
 }
 
 // Batch update server statuses by host
@@ -177,11 +192,11 @@ async function batchUpdateServerStatuses() {
           sshDown: false
         };
         
-        // Check HTTP endpoint for each server individually
-        const httpResult = await checkHttpEndpoint(serverName);
-        
+        // Fetch queue state for each server individually
+        const queueResult = await fetchQueueState(serverName);
+
         // Update the UI
-        updateServerStatusUI(serverName, screenStatus, httpResult);
+        updateServerStatusUI(serverName, screenStatus, queueResult);
       }
     }
   } catch (error) {
@@ -253,12 +268,13 @@ function createServerTabs() {
   andonLi.onclick = openAndonPanel;
   tabList.appendChild(andonLi);
   Object.keys(config).forEach(serverName => {
+    const serverConfig = config[serverName];
+    if (!serverConfig.active) return; // skip disabled servers
     const li = document.createElement('li');
     li.className = 'tab-item';
     li.dataset.server = serverName;
     const icon = document.createElement('div');
     icon.className = 'tab-icon status-red';
-    const serverConfig = config[serverName];
     icon.textContent = serverConfig.icon || serverName.charAt(0).toUpperCase();
     li.appendChild(icon);
     li.title = serverName;
@@ -267,19 +283,25 @@ function createServerTabs() {
   });
 }
 
-function updateTabStatus(serverName, screenResult, httpResult) {
+function updateTabStatus(serverName, queueResult) {
   const tab = document.querySelector(`.tab-item[data-server="${serverName}"] .tab-icon`);
   if (!tab) return;
   tab.classList.remove('status-green','status-blue','status-yellow','status-red');
   let cls = 'status-red';
-  if (!httpResult && screenResult.sshDown) {
-    cls = 'status-red';
-  } else if (!httpResult) {
-    cls = 'status-yellow';
-  } else if (screenResult.status) {
-    cls = 'status-blue';
-  } else {
-    cls = 'status-green';
+  if (queueResult.ok) {
+    switch ((queueResult.state || '').toLowerCase()) {
+      case 'paused':
+        cls = 'status-yellow';
+        break;
+      case 'active':
+        cls = 'status-blue';
+        break;
+      case 'ready':
+        cls = 'status-green';
+        break;
+      default:
+        cls = 'status-red';
+    }
   }
   tab.classList.add(cls);
 }
@@ -486,7 +508,11 @@ async function addServer(serverName, serverConfig) {
   renderServers();
 }
 
-async function updateServer(serverName, serverConfig) {
+  let tabElement = document.querySelector(`.tab-item[data-server="${activeTab}"]`);
+  if (!tabElement) {
+    activeTab = 'andon';
+  }
+  setActiveTab(activeTab);
   await ipcRenderer.invoke('update-server', { serverName, serverConfig });
   await loadConfig();
   renderServers();
