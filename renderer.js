@@ -110,11 +110,12 @@ async function loadConfig() {
 async function saveConfig() {
   await ipcRenderer.invoke('save-config', config);
 }
+
 async function fetchQueueState(serverName) {
   const serverConfig = config[serverName];
   const url = `http://${serverConfig.host}:${serverConfig.httpPort}/queue_state`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), 500);
   try {
     const response = await fetchFn(url, { signal: controller.signal });
     if (!response.ok) {
@@ -126,14 +127,10 @@ async function fetchQueueState(serverName) {
       } catch (_) {
         state = null;
       }
+      return { ok: true, state };
   } finally {
     clearTimeout(timer);
-    
-    return { ok: true, state };
-  } catch (error) {
-    console.error(`Queue state fetch failed for ${serverName}:`, error);
-    return { ok: false, state: null };
-  }
+}
 }
 
 async function updateServerStatus(serverName) {
@@ -180,11 +177,18 @@ function updateServerStatusUI(serverName, screenResult, queueResult) {
 // Batch update server statuses by host
 async function batchUpdateServerStatuses() {
   try {
-    // Get servers grouped by host
-    const serversByHost = await ipcRenderer.invoke('get-servers-by-host');
-    
-    // For each host, make a single batch status check
-    for (const [host, servers] of Object.entries(serversByHost)) {
+    // Get servers grouped by host, *but keep only active servers*.
+    const allByHost   = await ipcRenderer.invoke('get-servers-by-host');
+    const activeByHost = {};
+
+    for (const [host, names] of Object.entries(allByHost)) {
+      const activeNames = names.filter(name => config[name].active);
+      if (activeNames.length) activeByHost[host] = activeNames;
+    }
+    // Nothing active?  Just bail out early.
+    if (Object.keys(activeByHost).length === 0) return;
+
+    for (const [host, servers] of Object.entries(activeByHost)) {
       const batchResult = await ipcRenderer.invoke('get-batch-server-status', host);
       
       if (!batchResult.success) {
@@ -277,7 +281,7 @@ function createServerTabs() {
   andonLi.dataset.server = 'andon';
   const andonIcon = document.createElement('div');
   andonIcon.className = 'tab-icon';
-  andonIcon.textContent = 'A';
+  andonIcon.textContent = '🚥';
   andonLi.appendChild(andonIcon);
   andonLi.onclick = openAndonPanel;
   tabList.appendChild(andonLi);
@@ -347,7 +351,6 @@ function openServerWebview(serverName) {
   setActiveTab(serverName);
   const webview = document.getElementById('server-webview');
   webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/`;
-  container.style.display = 'flex';
   activeTab = serverName;
 }
 
@@ -700,7 +703,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('webview-refresh').addEventListener('click', () => {
     document.getElementById('server-webview').reload();
   });
-  document.getElementById('webview-close').addEventListener('click', closeServerWebview);
 
   document.querySelector('.close-log').addEventListener('click', closeLogModal);
 
@@ -724,10 +726,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Update statuses every 5 seconds using batch updates
-  setInterval(() => {
-    if (config) {
-      batchUpdateServerStatuses(); // Use the new batch update function
+  let statusJobRunning = false;
+
+  setInterval(async () => {
+    if (statusJobRunning || !config) return;
+    statusJobRunning = true;
+    try {
+      await batchUpdateServerStatuses();
+    } finally {
+      statusJobRunning = false;
     }
-  }, 5000);
+  }, 500);   // 2-second rhythm
 });
