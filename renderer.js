@@ -11,6 +11,7 @@ let sshStream;
 let terminal;
 let currentServerName;
 let activeTab = null;
+let inactiveExpanded = false;
 
 async function joinServer(serverName) {
   try {
@@ -554,13 +555,12 @@ function renderServers() {
   const inactiveHeader = document.createElement('div');
   inactiveHeader.id = 'inactive-servers-header';
   inactiveHeader.className = 'inactive-servers-header';
-  inactiveHeader.innerHTML = `<span class="arrow">▶</span> Inactive Servers (${inactiveServers.length})`;
-  inactiveHeader.onclick = toggleInactiveServers;
+  inactiveHeader.innerHTML = `<span class="arrow">${inactiveExpanded ? '▼' : '▶'}</span> Inactive Servers (${inactiveServers.length})`;
   appContainer.appendChild(inactiveHeader);
 
   const inactiveContent = document.createElement('div');
   inactiveContent.id = 'inactive-servers-content';
-  inactiveContent.style.display = 'none';
+  inactiveContent.style.display = inactiveExpanded ? 'grid' : 'none';
   appContainer.appendChild(inactiveContent);
 
   inactiveServers.forEach(serverName => {
@@ -576,7 +576,8 @@ function renderServers() {
 function toggleInactiveServers() {
   const content = document.getElementById('inactive-servers-content');
   const arrow = document.querySelector('#inactive-servers-header .arrow');
-  if (content.style.display === 'none' || content.style.display === '') {
+  inactiveExpanded = !inactiveExpanded;
+  if (inactiveExpanded) {
     content.style.display = 'grid';
     arrow.textContent = '▼';
   } else {
@@ -662,7 +663,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('add-server-btn').addEventListener('click', () => openServerModal());
   document.querySelector('.modal .close').addEventListener('click', closeServerModal);
   document.getElementById('server-form').addEventListener('submit', handleServerFormSubmit);
-  document.getElementById('inactive-servers-header').addEventListener('click', toggleInactiveServers);
   // document.getElementById('import-config-btn').addEventListener('click', importConfig);
   // document.getElementById('import-ssh-key-btn').addEventListener('click', importSSHKey);
   document.getElementById('server-type').addEventListener('change', updateServerTypeFields);
@@ -686,6 +686,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelector('.close-log').addEventListener('click', closeLogModal);
 
   document.querySelector('.close-terminal').addEventListener('click', closeTerminalModal);
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#inactive-servers-header')) {
+      toggleInactiveServers();
+    }
+  });
 
   window.onclick = function(event) {
     const termModal = document.getElementById('terminal-modal');
