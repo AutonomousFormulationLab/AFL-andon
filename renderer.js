@@ -2,7 +2,6 @@
 const { ipcRenderer } = require('electron');
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
-const fetch = require('node-fetch');
 
 let config;
 let editingServer = null;
@@ -310,8 +309,10 @@ function openAndonPanel() {
 function openServerWebview(serverName) {
   const serverConfig = config[serverName];
   const webview = document.getElementById('server-webview');
+  const container = document.getElementById('webview-container');
   webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/`;
-  setActiveTab(serverName);
+  container.style.display = 'flex';
+  activeTab = serverName;
 }
 
 function closeServerWebview() {
