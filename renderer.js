@@ -244,6 +244,15 @@ function closeLogModal() {
 function createServerTabs() {
   const tabList = document.getElementById('tab-list');
   tabList.innerHTML = '';
+  const andonLi = document.createElement('li');
+  andonLi.className = 'tab-item';
+  andonLi.dataset.server = 'andon';
+  const andonIcon = document.createElement('div');
+  andonIcon.className = 'tab-icon';
+  andonIcon.textContent = 'A';
+  andonLi.appendChild(andonIcon);
+  andonLi.onclick = openAndonPanel;
+  tabList.appendChild(andonLi);
   Object.keys(config).forEach(serverName => {
     const li = document.createElement('li');
     li.className = 'tab-item';
@@ -276,21 +285,37 @@ function updateTabStatus(serverName, screenResult, httpResult) {
   tab.classList.add(cls);
 }
 
+function setActiveTab(name) {
+  activeTab = name;
+  document.querySelectorAll('.tab-item').forEach(item => item.classList.remove('selected'));
+  const tab = document.querySelector(`.tab-item[data-server="${name}"]`);
+  if (tab) tab.classList.add('selected');
+  const andon = document.getElementById('andon-panel');
+  const webviewContainer = document.getElementById('webview-container');
+  if (name === 'andon') {
+    webviewContainer.style.display = 'none';
+    andon.style.display = 'block';
+  } else {
+    andon.style.display = 'none';
+    webviewContainer.style.display = 'flex';
+  }
+}
+
+function openAndonPanel() {
+  const webview = document.getElementById('server-webview');
+  webview.src = '';
+  setActiveTab('andon');
+}
+
 function openServerWebview(serverName) {
   const serverConfig = config[serverName];
   const webview = document.getElementById('server-webview');
-  const container = document.getElementById('webview-container');
-  webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/index`;
-  container.style.display = 'flex';
-  activeTab = serverName;
+  webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/`;
+  setActiveTab(serverName);
 }
 
 function closeServerWebview() {
-  const webview = document.getElementById('server-webview');
-  const container = document.getElementById('webview-container');
-  webview.src = '';
-  container.style.display = 'none';
-  activeTab = null;
+  openAndonPanel();
 }
 
 
@@ -483,6 +508,7 @@ function renderServers() {
   // Clear existing content
   appContainer.innerHTML = '';
   createServerTabs();
+  setActiveTab(activeTab || 'andon');
 
   // Sort servers: active first, then alphabetically
   const sortedServers = Object.keys(config).sort((a, b) => {
