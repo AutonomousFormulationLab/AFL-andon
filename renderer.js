@@ -11,6 +11,7 @@ let sshStream;
 
 let terminal;
 let currentServerName;
+let activeTab = null;
 
 async function joinServer(serverName) {
   try {
@@ -144,6 +145,8 @@ function updateServerStatusUI(serverName, screenResult, httpResult) {
     httpStatusElement.textContent = httpResult ? 'HTTP UP' : 'HTTP DOWN';
     httpStatusElement.className = `status-indicator ${httpResult ? 'status-up' : 'status-down'}`;
   }
+
+  updateTabStatus(serverName, screenResult, httpResult);
 }
 
 // Batch update server statuses by host
@@ -236,6 +239,58 @@ async function viewServerLog(serverName) {
 function closeLogModal() {
   const logModal = document.getElementById('log-modal');
   logModal.style.display = 'none';
+}
+
+function createServerTabs() {
+  const tabList = document.getElementById('tab-list');
+  tabList.innerHTML = '';
+  Object.keys(config).forEach(serverName => {
+    const li = document.createElement('li');
+    li.className = 'tab-item';
+    li.dataset.server = serverName;
+    const icon = document.createElement('div');
+    icon.className = 'tab-icon status-red';
+    const serverConfig = config[serverName];
+    icon.textContent = serverConfig.icon || serverName.charAt(0).toUpperCase();
+    li.appendChild(icon);
+    li.title = serverName;
+    li.onclick = () => openServerWebview(serverName);
+    tabList.appendChild(li);
+  });
+}
+
+function updateTabStatus(serverName, screenResult, httpResult) {
+  const tab = document.querySelector(`.tab-item[data-server="${serverName}"] .tab-icon`);
+  if (!tab) return;
+  tab.classList.remove('status-green','status-blue','status-yellow','status-red');
+  let cls = 'status-red';
+  if (!httpResult && screenResult.sshDown) {
+    cls = 'status-red';
+  } else if (!httpResult) {
+    cls = 'status-yellow';
+  } else if (screenResult.status) {
+    cls = 'status-blue';
+  } else {
+    cls = 'status-green';
+  }
+  tab.classList.add(cls);
+}
+
+function openServerWebview(serverName) {
+  const serverConfig = config[serverName];
+  const webview = document.getElementById('server-webview');
+  const container = document.getElementById('webview-container');
+  webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/index`;
+  container.style.display = 'flex';
+  activeTab = serverName;
+}
+
+function closeServerWebview() {
+  const webview = document.getElementById('server-webview');
+  const container = document.getElementById('webview-container');
+  webview.src = '';
+  container.style.display = 'none';
+  activeTab = null;
 }
 
 
@@ -424,9 +479,10 @@ async function toggleServerActive(serverName) {
 
 function renderServers() {
   const appContainer = document.getElementById('app');
-  
+
   // Clear existing content
   appContainer.innerHTML = '';
+  createServerTabs();
 
   // Sort servers: active first, then alphabetically
   const sortedServers = Object.keys(config).sort((a, b) => {
@@ -565,6 +621,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('set-config-path-btn').addEventListener('click', setConfigPath);
   document.getElementById('save-config-btn').addEventListener('click', saveConfig);
   document.getElementById('set-ssh-key-path-btn').addEventListener('click', setSshKeyPath);
+
+  document.getElementById('webview-back').addEventListener('click', () => {
+    const wv = document.getElementById('server-webview');
+    if (wv.canGoBack()) wv.goBack();
+  });
+  document.getElementById('webview-forward').addEventListener('click', () => {
+    const wv = document.getElementById('server-webview');
+    if (wv.canGoForward()) wv.goForward();
+  });
+  document.getElementById('webview-refresh').addEventListener('click', () => {
+    document.getElementById('server-webview').reload();
+  });
+  document.getElementById('webview-close').addEventListener('click', closeServerWebview);
 
   document.querySelector('.close-log').addEventListener('click', closeLogModal);
 

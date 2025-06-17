@@ -11,8 +11,82 @@
             font-family: Arial, sans-serif;
             line-height: 1.6;
             color: #333;
-            padding: 20px;
+            padding: 0;
+            margin: 0;
             background-color: #f4f4f4;
+            height: 100vh;
+        }
+
+        .layout {
+            display: flex;
+            height: 100%;
+        }
+
+        #sidebar {
+            width: 70px;
+            background-color: #222;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 10px;
+        }
+
+        #tab-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            width: 100%;
+        }
+
+        .tab-item {
+            width: 100%;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .tab-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .status-green { background-color: #2ecc71; }
+        .status-blue { background-color: #3498db; }
+        .status-yellow { background-color: #f1c40f; }
+        .status-red { background-color: #e74c3c; }
+
+        #content {
+            flex: 1;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        #webview-container {
+            display: none;
+            height: 80vh;
+            flex-direction: column;
+        }
+
+        #webview-nav {
+            background: #eee;
+            padding: 5px;
+        }
+
+        #webview-nav button {
+            margin-right: 5px;
+        }
+
+        #server-webview {
+            flex-grow: 1;
         }
 
         #app {
@@ -401,28 +475,45 @@
     </style>
 </head>
 <body>
-    <div class="header-container">
-        <h1>AFL Server Control</h1>
-        <div class="header-buttons">
-            <button id="save-config-btn">Save Configuration</button>
-            <button id="add-server-btn">Add New Server</button>
+    <div class="layout">
+        <div id="sidebar">
+            <ul id="tab-list"></ul>
         </div>
-    </div>
-    <div id="app">
-        <div id="active-servers"></div>
-        <div id="inactive-servers">
-            <div id="inactive-servers-header">
-                <span class="arrow">▶</span> Inactive Servers
+        <div id="content">
+            <div class="header-container">
+                <h1>AFL Server Control</h1>
+                <div class="header-buttons">
+                    <button id="save-config-btn">Save Configuration</button>
+                    <button id="add-server-btn">Add New Server</button>
+                </div>
             </div>
-            <div id="inactive-servers-content"></div>
-        </div>
+            <div id="app">
+                <div id="active-servers"></div>
+                <div id="inactive-servers">
+                    <div id="inactive-servers-header">
+                        <span class="arrow">▶</span> Inactive Servers
+                    </div>
+                    <div id="inactive-servers-content"></div>
+                </div>
 
-    </div>
-    <div>
-        <p>Config Path: <span id="config-path" class="path-display"></span></p>
-	<button id="set-config-path-btn">Set Config Path</button>
-        <p>SSH Key Path: <span id="ssh-key-path" class="path-display"></span></p>
-	<button id="set-ssh-key-path-btn">Set SSH Key Path</button>
+            </div>
+            <div>
+                <p>Config Path: <span id="config-path" class="path-display"></span></p>
+                <button id="set-config-path-btn">Set Config Path</button>
+                <p>SSH Key Path: <span id="ssh-key-path" class="path-display"></span></p>
+                <button id="set-ssh-key-path-btn">Set SSH Key Path</button>
+            </div>
+
+            <div id="webview-container">
+                <div id="webview-nav">
+                    <button id="webview-back">Back</button>
+                    <button id="webview-forward">Forward</button>
+                    <button id="webview-refresh">Refresh</button>
+                    <button id="webview-close">Close</button>
+                </div>
+                <webview id="server-webview"></webview>
+            </div>
+        </div>
     </div>
     <div id="log-modal" class="modal">
         <div class="log-modal-content">
