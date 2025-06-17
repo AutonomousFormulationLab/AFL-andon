@@ -503,12 +503,14 @@ async function addServer(serverName, serverConfig) {
   await ipcRenderer.invoke('add-server', { serverName, serverConfig });
   await loadConfig();
   renderServers();
+}
 
+ async function updateServer(serverName, serverConfig) {
   let tabElement = document.querySelector(`.tab-item[data-server="${activeTab}"]`);
   if (!tabElement) {
     activeTab = 'andon';
+    setActiveTab(activeTab);
   }
-  setActiveTab(activeTab);
   await ipcRenderer.invoke('update-server', { serverName, serverConfig });
   await loadConfig();
   renderServers();
