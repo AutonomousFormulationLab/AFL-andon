@@ -2,7 +2,16 @@
 const { ipcRenderer } = require('electron');
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
-
+// Use the built-in fetch in recent Node versions. node-fetch remains as a
+// fallback for older environments but may throw if imported directly.
+let fetchFn;
+try {
+  // Prefer global fetch if available
+  fetchFn = global.fetch || require('node-fetch');
+} catch (err) {
+  // `require` will fail for ESM-only node-fetch; fall back to global
+  fetchFn = global.fetch;
+}
 let config;
 let editingServer = null;
 
@@ -104,13 +113,21 @@ async function saveConfig() {
 async function fetchQueueState(serverName) {
   const serverConfig = config[serverName];
   const url = `http://${serverConfig.host}:${serverConfig.httpPort}/queue_state`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(url, { timeout: 5000 });
+    const response = await fetchFn(url, { signal: controller.signal });
     if (!response.ok) {
       return { ok: false, state: null };
     }
     let state;
-    state = (await response.text()).trim();
+      try {
+        state = (await response.text()).trim();
+      } catch (_) {
+        state = null;
+      }
+  } finally {
+    clearTimeout(timer);
     
     return { ok: true, state };
   } catch (error) {
