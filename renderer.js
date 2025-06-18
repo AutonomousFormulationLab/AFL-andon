@@ -107,9 +107,6 @@ async function loadConfig() {
   config = await ipcRenderer.invoke('get-config');
 }
 
-async function saveConfig() {
-  await ipcRenderer.invoke('save-config', config);
-}
 
 async function fetchQueueState(serverName) {
   const serverConfig = config[serverName];
