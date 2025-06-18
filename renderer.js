@@ -16,6 +16,18 @@ let config;
 let editingServer = null;
 let aflConfig = {};
 
+function parseAflTimestamp(key) {
+  try {
+    const [datePart, timePart] = key.split(' ');
+    const [yy, dd, mm] = datePart.split('/').map(Number);
+    const [hh, mi, secPart] = timePart.split(':');
+    const ss = Number(secPart.split('.')[0]);
+    return new Date(2000 + yy, mm - 1, dd, Number(hh), Number(mi), ss).getTime();
+  } catch (_) {
+    return 0;
+  }
+}
+
 let sshStream;
 
 let terminal;
@@ -109,7 +121,14 @@ async function loadConfig() {
 }
 
 async function loadAflConfig() {
-  aflConfig = await ipcRenderer.invoke('get-afl-config');
+  const fullCfg = await ipcRenderer.invoke('get-afl-config');
+  let latestKey = null;
+  Object.keys(fullCfg).forEach(k => {
+    if (!latestKey || parseAflTimestamp(k) > parseAflTimestamp(latestKey)) {
+      latestKey = k;
+    }
+  });
+  aflConfig = latestKey ? fullCfg[latestKey] : {};
   renderAflConfigEditor();
 }
 
@@ -162,6 +181,7 @@ function parseInputValue(val) {
 async function saveAflConfig() {
   await ipcRenderer.invoke('save-afl-config', aflConfig);
   alert('Settings saved');
+  await loadAflConfig();
 }
 
 
@@ -376,6 +396,7 @@ function createServerTabs() {
   });
   const settingsLi = document.createElement('li');
   settingsLi.className = 'tab-item';
+  settingsLi.id = 'settings-tab';
   settingsLi.dataset.server = 'settings';
   const settingsIcon = document.createElement('div');
   settingsIcon.className = 'tab-icon status-white';
