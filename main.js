@@ -287,7 +287,11 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
   return result;
 });
 
-ipcMain.handle('get-afl-config', async () => {
+ipcMain.handle('get-afl-config', async (event, host) => {
+  if (host) {
+    const result = await sshOps.getRemoteAflConfig(host);
+    return result.success ? result.data : {};
+  }
   const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
   try {
     const data = await fs.readFile(cfgPath, 'utf8');
@@ -297,7 +301,10 @@ ipcMain.handle('get-afl-config', async () => {
   }
 });
 
-ipcMain.handle('save-afl-config', async (event, cfg) => {
+ipcMain.handle('save-afl-config', async (event, host, cfg) => {
+  if (host) {
+    return await sshOps.saveRemoteAflConfig(host, cfg);
+  }
   const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
   try {
     let data = {};

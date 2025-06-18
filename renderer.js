@@ -17,6 +17,7 @@ let config;
 let editingServer = null;
 let aflConfig = {};
 let aflConfigEditor;
+let selectedAflHost = null;
 
 function parseAflTimestamp(key) {
   try {
@@ -123,7 +124,8 @@ async function loadConfig() {
 }
 
 async function loadAflConfig() {
-  const fullCfg = await ipcRenderer.invoke('get-afl-config');
+  if (!selectedAflHost) return;
+  const fullCfg = await ipcRenderer.invoke('get-afl-config', selectedAflHost);
   let latestKey = null;
   Object.keys(fullCfg).forEach(k => {
     if (!latestKey || parseAflTimestamp(k) > parseAflTimestamp(latestKey)) {
@@ -149,12 +151,34 @@ function renderAflConfigEditor() {
 }
 
 async function saveAflConfig() {
+  if (!selectedAflHost) return;
   if (aflConfigEditor) {
     aflConfig = aflConfigEditor.get();
   }
-  await ipcRenderer.invoke('save-afl-config', aflConfig);
+  await ipcRenderer.invoke('save-afl-config', selectedAflHost, aflConfig);
   alert('Settings saved');
   await loadAflConfig();
+}
+
+function populateAflHostSelect() {
+  const select = document.getElementById('config-host-select');
+  if (!select) return;
+  select.innerHTML = '';
+  const hosts = Array.from(new Set(Object.values(config || {}).map(c => c.host)));
+  hosts.forEach(h => {
+    const opt = document.createElement('option');
+    opt.value = h;
+    opt.textContent = h;
+    select.appendChild(opt);
+  });
+  if (hosts.length && !selectedAflHost) {
+    selectedAflHost = hosts[0];
+    select.value = selectedAflHost;
+  }
+  select.onchange = async () => {
+    selectedAflHost = select.value;
+    await loadAflConfig();
+  };
 }
 
 
@@ -444,6 +468,7 @@ function closeServerWebview() {
 }
 
 async function openSettingsPanel() {
+  populateAflHostSelect();
   await loadAflConfig();
   setActiveTab('settings');
 }

@@ -329,6 +329,105 @@ class SSHOperations {
     const joinCommand = `screen -x ${serverConfig.screen_name}`;
     return this.executeCommand(serverName, joinCommand);
   }
+
+  getServerForHost(host) {
+    const entry = Object.entries(this.config).find(([, cfg]) => cfg.host === host);
+    if (!entry) return null;
+    return entry[1];
+  }
+
+  async readRemoteFile(host, remotePath) {
+    const server = this.getServerForHost(host);
+    if (!server) return { success: false, error: `No server for host ${host}` };
+    return new Promise((resolve) => {
+      const conn = new Client();
+      conn.on('ready', () => {
+        conn.sftp((err, sftp) => {
+          if (err) {
+            conn.end();
+            resolve({ success: false, error: err.message });
+            return;
+          }
+          sftp.readFile(remotePath, 'utf8', (err, data) => {
+            conn.end();
+            if (err) resolve({ success: false, error: err.message });
+            else resolve({ success: true, data });
+          });
+        });
+      }).on('error', (err) => {
+        resolve({ success: false, error: err.message });
+      }).connect({
+        host: server.host,
+        port: 22,
+        username: server.username,
+        privateKey: this.sshKey
+      });
+    });
+  }
+
+  async writeRemoteFile(host, remotePath, content) {
+    const server = this.getServerForHost(host);
+    if (!server) return { success: false, error: `No server for host ${host}` };
+    return new Promise((resolve) => {
+      const conn = new Client();
+      conn.on('ready', () => {
+        conn.sftp((err, sftp) => {
+          if (err) {
+            conn.end();
+            resolve({ success: false, error: err.message });
+            return;
+          }
+          const dir = path.posix.dirname(remotePath);
+          sftp.mkdir(dir, { mode: 0o755 }, () => {
+            sftp.writeFile(remotePath, content, 'utf8', (err2) => {
+              conn.end();
+              if (err2) resolve({ success: false, error: err2.message });
+              else resolve({ success: true });
+            });
+          });
+        });
+      }).on('error', (err) => {
+        resolve({ success: false, error: err.message });
+      }).connect({
+        host: server.host,
+        port: 22,
+        username: server.username,
+        privateKey: this.sshKey
+      });
+    });
+  }
+
+  async getRemoteAflConfig(host) {
+    const server = this.getServerForHost(host);
+    if (!server) return { success: false, error: `No server for host ${host}` };
+    const remotePath = `/home/${server.username}/.afl/config.json`;
+    const res = await this.readRemoteFile(host, remotePath);
+    if (!res.success) return res;
+    try {
+      return { success: true, data: JSON.parse(res.data) };
+    } catch (_) {
+      return { success: true, data: {} };
+    }
+  }
+
+  async saveRemoteAflConfig(host, cfgObj) {
+    const server = this.getServerForHost(host);
+    if (!server) return { success: false, error: `No server for host ${host}` };
+    const remotePath = `/home/${server.username}/.afl/config.json`;
+    let existing = {};
+    const read = await this.readRemoteFile(host, remotePath);
+    if (read.success && read.data) {
+      try { existing = JSON.parse(read.data); } catch (_) {}
+    }
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const micros = String(now.getMilliseconds() * 1000).padStart(6, '0');
+    const ts = `${String(now.getFullYear()).slice(-2)}/${pad(now.getDate())}/${pad(now.getMonth() + 1)} ` +
+               `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${micros}`;
+    existing[ts] = cfgObj;
+    const content = JSON.stringify(existing, null, 2);
+    return await this.writeRemoteFile(host, remotePath, content);
+  }
 }
 
 module.exports = SSHOperations;
