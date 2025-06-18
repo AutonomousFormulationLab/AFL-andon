@@ -221,7 +221,13 @@ async function batchUpdateServerStatuses() {
             };
 
             // Fetch queue state for each server individually
-            const queueResult = await fetchQueueState(serverName);
+            let queueResult;
+            try {
+              queueResult = await fetchQueueState(serverName);
+            } catch (err) {
+              console.error(`Error fetching queue state for ${serverName}:`, err);
+              queueResult = { ok: false, state: null };
+            }
 
             // Update the UI
             updateServerStatusUI(serverName, screenStatus, queueResult);
