@@ -736,5 +736,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
       statusJobRunning = false;
     }
-  }, 500);   // 2-second rhythm
+  }, 500);   // 500 ms interval
 });
