@@ -298,7 +298,7 @@ function createServerTabs() {
   andonLi.className = 'tab-item';
   andonLi.dataset.server = 'andon';
   const andonIcon = document.createElement('div');
-  andonIcon.className = 'tab-icon';
+  andonIcon.className = 'tab-icon status-white';
   andonIcon.textContent = '🚥';
   andonLi.appendChild(andonIcon);
   andonLi.onclick = openAndonPanel;
