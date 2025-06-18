@@ -287,3 +287,25 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
   return result;
 });
 
+ipcMain.handle('get-afl-config', async () => {
+  const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
+  try {
+    const data = await fs.readFile(cfgPath, 'utf8');
+    return JSON.parse(data);
+  } catch (_) {
+    return {};
+  }
+});
+
+ipcMain.handle('save-afl-config', async (event, cfg) => {
+  const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
+  try {
+    await fs.mkdir(path.dirname(cfgPath), { recursive: true });
+    await fs.writeFile(cfgPath, JSON.stringify(cfg, null, 2));
+    return { success: true };
+  } catch (err) {
+    console.error('Error saving AFL config:', err);
+    return { success: false, error: err.message };
+  }
+});
+

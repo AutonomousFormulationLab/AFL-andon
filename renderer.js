@@ -14,6 +14,7 @@ try {
 }
 let config;
 let editingServer = null;
+let aflConfig = {};
 
 let sshStream;
 
@@ -105,6 +106,62 @@ function closeTerminalModal() {
 
 async function loadConfig() {
   config = await ipcRenderer.invoke('get-config');
+}
+
+async function loadAflConfig() {
+  aflConfig = await ipcRenderer.invoke('get-afl-config');
+  renderAflConfigEditor();
+}
+
+function renderAflConfigEditor() {
+  const container = document.getElementById('afl-config-editor');
+  if (!container) return;
+  container.innerHTML = '';
+  createConfigFields(container, aflConfig);
+}
+
+function createConfigFields(container, obj, path = []) {
+  Object.keys(obj).forEach(key => {
+    const value = obj[key];
+    const wrapper = document.createElement('div');
+    wrapper.className = 'config-field';
+    wrapper.style.marginLeft = path.length * 20 + 'px';
+    const label = document.createElement('label');
+    label.textContent = key + ':';
+    wrapper.appendChild(label);
+    if (typeof value === 'object' && value !== null) {
+      const group = document.createElement('div');
+      group.className = 'config-group';
+      wrapper.appendChild(group);
+      createConfigFields(group, value, [...path, key]);
+    } else {
+      const input = document.createElement('input');
+      input.value = value;
+      input.onchange = e => setConfigValue([...path, key], e.target.value);
+      wrapper.appendChild(input);
+    }
+    container.appendChild(wrapper);
+  });
+}
+
+function setConfigValue(path, value) {
+  let obj = aflConfig;
+  for (let i = 0; i < path.length - 1; i++) {
+    obj = obj[path[i]];
+  }
+  obj[path[path.length - 1]] = parseInputValue(value);
+}
+
+function parseInputValue(val) {
+  if (val === 'true') return true;
+  if (val === 'false') return false;
+  if (val !== '' && !isNaN(val)) return Number(val);
+  return val;
+}
+
+async function saveAflConfig() {
+  await ipcRenderer.invoke('save-afl-config', aflConfig);
+  alert('Settings saved');
 }
 
 
@@ -317,6 +374,15 @@ function createServerTabs() {
     li.onclick = () => openServerWebview(serverName);
     tabList.appendChild(li);
   });
+  const settingsLi = document.createElement('li');
+  settingsLi.className = 'tab-item';
+  settingsLi.dataset.server = 'settings';
+  const settingsIcon = document.createElement('div');
+  settingsIcon.className = 'tab-icon status-white';
+  settingsIcon.textContent = '⚙️';
+  settingsLi.appendChild(settingsIcon);
+  settingsLi.onclick = openSettingsPanel;
+  tabList.appendChild(settingsLi);
 }
 
 function updateTabStatus(serverName, queueResult) {
@@ -349,11 +415,18 @@ function setActiveTab(name) {
   if (tab) tab.classList.add('selected');
   const andon = document.getElementById('andon-panel');
   const webviewContainer = document.getElementById('webview-container');
+  const settings = document.getElementById('settings-panel');
   if (name === 'andon') {
     webviewContainer.style.display = 'none';
+    settings.style.display = 'none';
     andon.style.display = 'block';
+  } else if (name === 'settings') {
+    andon.style.display = 'none';
+    webviewContainer.style.display = 'none';
+    settings.style.display = 'block';
   } else {
     andon.style.display = 'none';
+    settings.style.display = 'none';
     webviewContainer.style.display = 'flex';
   }
 }
@@ -374,6 +447,11 @@ function openServerWebview(serverName) {
 
 function closeServerWebview() {
   openAndonPanel();
+}
+
+async function openSettingsPanel() {
+  await loadAflConfig();
+  setActiveTab('settings');
 }
 
 
@@ -709,6 +787,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('set-config-path-btn').addEventListener('click', setConfigPath);
   document.getElementById('save-config-btn').addEventListener('click', saveConfig);
   document.getElementById('set-ssh-key-path-btn').addEventListener('click', setSshKeyPath);
+  const saveAflBtn = document.getElementById('save-afl-config-btn');
+  if (saveAflBtn) {
+    saveAflBtn.addEventListener('click', saveAflConfig);
+  }
 
   document.getElementById('webview-back').addEventListener('click', () => {
     const wv = document.getElementById('server-webview');

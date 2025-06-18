@@ -489,6 +489,15 @@
             text-decoration: none;
             cursor: pointer;
         }
+
+        .config-field {
+            margin-bottom: 8px;
+        }
+
+        .config-field label {
+            margin-right: 5px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -521,6 +530,12 @@
                     <p>SSH Key Path: <span id="ssh-key-path" class="path-display"></span></p>
                     <button id="set-ssh-key-path-btn">Set SSH Key Path</button>
                 </div>
+            </div>
+
+            <div id="settings-panel" style="display:none; padding:20px; overflow:auto; flex:1;">
+                <h2>Settings</h2>
+                <div id="afl-config-editor"></div>
+                <button id="save-afl-config-btn">Save Settings</button>
             </div>
 
             <div id="webview-container">
