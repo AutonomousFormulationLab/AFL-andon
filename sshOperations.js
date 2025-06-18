@@ -76,7 +76,7 @@ class SSHOperations {
     }
   }
 
-  async executeCommand(serverName, command) {
+  async executeCommand(serverName, command, timeout = 0) {
     return new Promise((resolve) => {
       const serverConfig = this.config[serverName];
       if (!serverConfig) {
@@ -85,18 +85,34 @@ class SSHOperations {
       }
 
       const conn = new Client();
+      let timer;
+      let settled = false;
+      const cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+
       conn.on('ready', () => {
+        cleanup();
         conn.exec(command, (err, stream) => {
           if (err) {
             conn.end();
-            resolve({ success: false, sshDown: true });
+            if (!settled) {
+              settled = true;
+              resolve({ success: false, sshDown: true });
+            }
             return;
           }
 
           let output = '';
           stream.on('close', (code, signal) => {
             conn.end();
-            resolve({ success: true, output, code, signal });
+            if (!settled) {
+              settled = true;
+              resolve({ success: true, output, code, signal });
+            }
           }).on('data', (data) => {
             output += data;
           }).stderr.on('data', (data) => {
@@ -104,14 +120,30 @@ class SSHOperations {
           });
         });
       }).on('error', (err) => {
+        cleanup();
         console.error(`SSH connection error for ${serverName}:`, err);
-        resolve({ success: false, sshDown: true });
+        if (!settled) {
+          settled = true;
+          resolve({ success: false, sshDown: true });
+        }
       }).connect({
         host: serverConfig.host,
         port: 22,
         username: serverConfig.username,
         privateKey: this.sshKey
       });
+
+      if (timeout > 0) {
+        timer = setTimeout(() => {
+          console.warn(`SSH connection timed out for ${serverName}`);
+          conn.destroy();
+          cleanup();
+          if (!settled) {
+            settled = true;
+            resolve({ success: false, sshDown: true });
+          }
+        }, timeout);
+      }
     });
   }
 
@@ -165,7 +197,7 @@ class SSHOperations {
     }
     
     const statusCommand = 'screen -ls';
-    const result = await this.executeCommand(serverName, statusCommand);
+    const result = await this.executeCommand(serverName, statusCommand, 500);
     
     if (!result.success) {
       return { success: false, sshDown: true };
@@ -211,7 +243,7 @@ class SSHOperations {
     }
     
     const statusCommand = 'screen -ls';
-    const result = await this.executeCommand(serverName, statusCommand);
+    const result = await this.executeCommand(serverName, statusCommand, 500);
     
     if (!result.success) {
       return { success: false, sshDown: true, host };
