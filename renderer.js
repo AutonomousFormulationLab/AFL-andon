@@ -2,6 +2,7 @@
 const { ipcRenderer } = require('electron');
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
+const JSONEditor = require('jsoneditor');
 // Use the built-in fetch in recent Node versions. node-fetch remains as a
 // fallback for older environments but may throw if imported directly.
 let fetchFn;
@@ -15,6 +16,7 @@ try {
 let config;
 let editingServer = null;
 let aflConfig = {};
+let aflConfigEditor;
 
 function parseAflTimestamp(key) {
   try {
@@ -135,50 +137,21 @@ async function loadAflConfig() {
 function renderAflConfigEditor() {
   const container = document.getElementById('afl-config-editor');
   if (!container) return;
-  container.innerHTML = '';
-  createConfigFields(container, aflConfig);
-}
-
-function createConfigFields(container, obj, path = []) {
-  Object.keys(obj).forEach(key => {
-    const value = obj[key];
-    const wrapper = document.createElement('div');
-    wrapper.className = 'config-field';
-    wrapper.style.marginLeft = path.length * 20 + 'px';
-    const label = document.createElement('label');
-    label.textContent = key + ':';
-    wrapper.appendChild(label);
-    if (typeof value === 'object' && value !== null) {
-      const group = document.createElement('div');
-      group.className = 'config-group';
-      wrapper.appendChild(group);
-      createConfigFields(group, value, [...path, key]);
-    } else {
-      const input = document.createElement('input');
-      input.value = value;
-      input.onchange = e => setConfigValue([...path, key], e.target.value);
-      wrapper.appendChild(input);
-    }
-    container.appendChild(wrapper);
-  });
-}
-
-function setConfigValue(path, value) {
-  let obj = aflConfig;
-  for (let i = 0; i < path.length - 1; i++) {
-    obj = obj[path[i]];
+  if (!aflConfigEditor) {
+    aflConfigEditor = new JSONEditor(container, {
+      mode: 'tree',
+      mainMenuBar: false,
+      navigationBar: false,
+      statusBar: false
+    });
   }
-  obj[path[path.length - 1]] = parseInputValue(value);
-}
-
-function parseInputValue(val) {
-  if (val === 'true') return true;
-  if (val === 'false') return false;
-  if (val !== '' && !isNaN(val)) return Number(val);
-  return val;
+  aflConfigEditor.set(aflConfig);
 }
 
 async function saveAflConfig() {
+  if (aflConfigEditor) {
+    aflConfig = aflConfigEditor.get();
+  }
   await ipcRenderer.invoke('save-afl-config', aflConfig);
   alert('Settings saved');
   await loadAflConfig();
