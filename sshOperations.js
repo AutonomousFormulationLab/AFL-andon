@@ -339,22 +339,30 @@ class SSHOperations {
   async readRemoteFile(host, remotePath) {
     const server = this.getServerForHost(host);
     if (!server) return { success: false, error: `No server for host ${host}` };
+    console.log(`Reading remote file ${remotePath} from ${host}`);
     return new Promise((resolve) => {
       const conn = new Client();
       conn.on('ready', () => {
         conn.sftp((err, sftp) => {
           if (err) {
             conn.end();
+            console.error(`SFTP error reading ${remotePath} on ${host}:`, err.message);
             resolve({ success: false, error: err.message });
             return;
           }
           sftp.readFile(remotePath, 'utf8', (err, data) => {
             conn.end();
-            if (err) resolve({ success: false, error: err.message });
-            else resolve({ success: true, data });
+            if (err) {
+              console.error(`Failed to read ${remotePath} on ${host}:`, err.message);
+              resolve({ success: false, error: err.message });
+            } else {
+              console.log(`Successfully read ${remotePath} from ${host}`);
+              resolve({ success: true, data });
+            }
           });
         });
       }).on('error', (err) => {
+        console.error(`Connection error reading ${remotePath} on ${host}:`, err.message);
         resolve({ success: false, error: err.message });
       }).connect({
         host: server.host,
@@ -368,12 +376,14 @@ class SSHOperations {
   async writeRemoteFile(host, remotePath, content) {
     const server = this.getServerForHost(host);
     if (!server) return { success: false, error: `No server for host ${host}` };
+    console.log(`Writing remote file ${remotePath} to ${host}`);
     return new Promise((resolve) => {
       const conn = new Client();
       conn.on('ready', () => {
         conn.sftp((err, sftp) => {
           if (err) {
             conn.end();
+            console.error(`SFTP error writing ${remotePath} on ${host}:`, err.message);
             resolve({ success: false, error: err.message });
             return;
           }
@@ -381,12 +391,18 @@ class SSHOperations {
           sftp.mkdir(dir, { mode: 0o755 }, () => {
             sftp.writeFile(remotePath, content, 'utf8', (err2) => {
               conn.end();
-              if (err2) resolve({ success: false, error: err2.message });
-              else resolve({ success: true });
+              if (err2) {
+                console.error(`Failed to write ${remotePath} on ${host}:`, err2.message);
+                resolve({ success: false, error: err2.message });
+              } else {
+                console.log(`Successfully wrote ${remotePath} to ${host}`);
+                resolve({ success: true });
+              }
             });
           });
         });
       }).on('error', (err) => {
+        console.error(`Connection error writing ${remotePath} on ${host}:`, err.message);
         resolve({ success: false, error: err.message });
       }).connect({
         host: server.host,
@@ -404,8 +420,11 @@ class SSHOperations {
     const res = await this.readRemoteFile(host, remotePath);
     if (!res.success) return res;
     try {
-      return { success: true, data: JSON.parse(res.data) };
+      const parsed = JSON.parse(res.data);
+      console.log(`Parsed AFL config from ${host}`);
+      return { success: true, data: parsed };
     } catch (_) {
+      console.log(`Remote AFL config on ${host} is empty or invalid JSON`);
       return { success: true, data: {} };
     }
   }
@@ -414,6 +433,7 @@ class SSHOperations {
     const server = this.getServerForHost(host);
     if (!server) return { success: false, error: `No server for host ${host}` };
     const remotePath = `/home/${server.username}/.afl/config.json`;
+    console.log(`Saving AFL config to ${remotePath} on ${host}`);
     let existing = {};
     const read = await this.readRemoteFile(host, remotePath);
     if (read.success && read.data) {
@@ -426,7 +446,11 @@ class SSHOperations {
                `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${micros}`;
     existing[ts] = cfgObj;
     const content = JSON.stringify(existing, null, 2);
-    return await this.writeRemoteFile(host, remotePath, content);
+    const res = await this.writeRemoteFile(host, remotePath, content);
+    if (res.success) {
+      console.log(`AFL config saved on ${host}`);
+    }
+    return res;
   }
 }
 

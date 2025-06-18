@@ -289,23 +289,36 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
 
 ipcMain.handle('get-afl-config', async (event, host) => {
   if (host) {
+    console.log(`Fetching AFL config from remote host ${host}`);
     const result = await sshOps.getRemoteAflConfig(host);
-    return result.success ? result.data : {};
+    if (!result.success) {
+      console.error(`Failed to fetch AFL config from ${host}:`, result.error);
+      return { success: false, error: result.error };
+    }
+    return { success: true, data: result.data };
   }
   const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
+  console.log(`Reading local AFL config from ${cfgPath}`);
   try {
     const data = await fs.readFile(cfgPath, 'utf8');
-    return JSON.parse(data);
-  } catch (_) {
-    return {};
+    return { success: true, data: JSON.parse(data) };
+  } catch (err) {
+    console.error('Failed to read local AFL config:', err.message);
+    return { success: false, error: err.message };
   }
 });
 
 ipcMain.handle('save-afl-config', async (event, host, cfg) => {
   if (host) {
-    return await sshOps.saveRemoteAflConfig(host, cfg);
+    console.log(`Saving AFL config to remote host ${host}`);
+    const res = await sshOps.saveRemoteAflConfig(host, cfg);
+    if (!res.success) {
+      console.error(`Failed to save AFL config to ${host}:`, res.error);
+    }
+    return res;
   }
   const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
+  console.log(`Saving local AFL config to ${cfgPath}`);
   try {
     let data = {};
     try {
@@ -322,9 +335,10 @@ ipcMain.handle('save-afl-config', async (event, host, cfg) => {
     data[ts] = cfg;
     await fs.mkdir(path.dirname(cfgPath), { recursive: true });
     await fs.writeFile(cfgPath, JSON.stringify(data, null, 2));
+    console.log('Local AFL config saved');
     return { success: true };
   } catch (err) {
-    console.error('Error saving AFL config:', err);
+    console.error('Error saving local AFL config:', err);
     return { success: false, error: err.message };
   }
 });
