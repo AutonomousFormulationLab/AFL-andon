@@ -188,35 +188,42 @@ async function batchUpdateServerStatuses() {
     // Nothing active?  Just bail out early.
     if (Object.keys(activeByHost).length === 0) return;
 
-    for (const [host, servers] of Object.entries(activeByHost)) {
-      const batchResult = await ipcRenderer.invoke('get-batch-server-status', host);
-      
-      if (!batchResult.success) {
-        // If SSH is down for this host, update all servers on this host
-        servers.forEach(serverName => {
-          updateServerStatusUI(serverName, { sshDown: true }, false);
-        });
-        continue;
-      }
-      
-      // For each server on this host, update its status based on the batch result
-      const sessions = batchResult.sessions;
-      
-      for (const serverName of servers) {
-        const serverConfig = config[serverName];
-        const screenStatus = {
-          success: true,
-          status: sessions.includes(serverConfig.screen_name),
-          sshDown: false
-        };
-        
-        // Fetch queue state for each server individually
-        const queueResult = await fetchQueueState(serverName);
+    await Promise.all(
+      Object.entries(activeByHost).map(async ([host, servers]) => {
+        const batchResult = await ipcRenderer.invoke(
+          'get-batch-server-status',
+          host
+        );
 
-        // Update the UI
-        updateServerStatusUI(serverName, screenStatus, queueResult);
-      }
-    }
+        if (!batchResult.success) {
+          // If SSH is down for this host, update all servers on this host
+          servers.forEach(serverName => {
+            updateServerStatusUI(serverName, { sshDown: true }, false);
+          });
+          return;
+        }
+
+        // For each server on this host, update its status based on the batch result
+        const sessions = batchResult.sessions;
+
+        await Promise.all(
+          servers.map(async serverName => {
+            const serverConfig = config[serverName];
+            const screenStatus = {
+              success: true,
+              status: sessions.includes(serverConfig.screen_name),
+              sshDown: false
+            };
+
+            // Fetch queue state for each server individually
+            const queueResult = await fetchQueueState(serverName);
+
+            // Update the UI
+            updateServerStatusUI(serverName, screenStatus, queueResult);
+          })
+        );
+      })
+    );
   } catch (error) {
     console.error('Error in batch status update:', error);
   }
