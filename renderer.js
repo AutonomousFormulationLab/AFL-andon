@@ -113,6 +113,7 @@ async function saveConfig() {
 
 async function fetchQueueState(serverName) {
   const serverConfig = config[serverName];
+  if (!serverConfig) return { ok: false, state: null };
   const url = `http://${serverConfig.host}:${serverConfig.httpPort}/queue_state`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 500);
@@ -182,7 +183,7 @@ async function batchUpdateServerStatuses() {
     const activeByHost = {};
 
     for (const [host, names] of Object.entries(allByHost)) {
-      const activeNames = names.filter(name => config[name].active);
+      const activeNames = names.filter(name => config[name] && config[name].active);
       if (activeNames.length) activeByHost[host] = activeNames;
     }
     // Nothing active?  Just bail out early.
@@ -209,6 +210,10 @@ async function batchUpdateServerStatuses() {
         await Promise.all(
           servers.map(async serverName => {
             const serverConfig = config[serverName];
+            if (!serverConfig) {
+              console.warn(`No config for server ${serverName}`);
+              return;
+            }
             const screenStatus = {
               success: true,
               status: sessions.includes(serverConfig.screen_name),
