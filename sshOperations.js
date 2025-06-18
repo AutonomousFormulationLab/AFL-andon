@@ -2,6 +2,15 @@ const { Client } = require('ssh2');
 const fs = require('fs').promises;
 const path = require('path');
 
+const DEBUG_SSH = ['1', 'true', 'yes'].includes(
+  (process.env.DEBUG_SSH || '').toLowerCase()
+);
+const debugLog = (...args) => {
+  if (DEBUG_SSH) {
+    console.log('[SSH DEBUG]', ...args);
+  }
+};
+
 class SSHOperations {
   constructor(configPath, sshKeyPath) {
     this.config = {};
@@ -76,7 +85,7 @@ class SSHOperations {
     }
   }
 
-  async executeCommand(serverName, command) {
+  async executeCommand(serverName, command, timeout = 0) {
     return new Promise((resolve) => {
       const serverConfig = this.config[serverName];
       if (!serverConfig) {
@@ -84,19 +93,41 @@ class SSHOperations {
         return;
       }
 
+      debugLog(`${serverName} -> ${serverConfig.host}: ${command}`);
+
       const conn = new Client();
+      let timer;
+      let settled = false;
+      const cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      };
+
       conn.on('ready', () => {
+        debugLog(`${serverName}: connection ready`);
+        cleanup();
+        debugLog(`${serverName}: executing \"${command}\"`);
         conn.exec(command, (err, stream) => {
           if (err) {
             conn.end();
-            resolve({ success: false, sshDown: true });
+            if (!settled) {
+              settled = true;
+              resolve({ success: false, sshDown: true });
+            }
             return;
           }
 
           let output = '';
           stream.on('close', (code, signal) => {
             conn.end();
-            resolve({ success: true, output, code, signal });
+            debugLog(`${serverName}: command finished with code ${code}`);
+            if (!settled) {
+              settled = true;
+              resolve({ success: true, output, code, signal });
+            }
+            debugLog(`${serverName}: output length ${output.length}`);
           }).on('data', (data) => {
             output += data;
           }).stderr.on('data', (data) => {
@@ -104,14 +135,35 @@ class SSHOperations {
           });
         });
       }).on('error', (err) => {
+        cleanup();
+        debugLog(`${serverName}: connection error`, err.message);
         console.error(`SSH connection error for ${serverName}:`, err);
-        resolve({ success: false, sshDown: true });
-      }).connect({
+        if (!settled) {
+          settled = true;
+          resolve({ success: false, sshDown: true });
+        }
+      });
+
+      debugLog(`${serverName}: connecting to ${serverConfig.host}`);
+      conn.connect({
         host: serverConfig.host,
         port: 22,
         username: serverConfig.username,
         privateKey: this.sshKey
       });
+
+      if (timeout > 0) {
+        timer = setTimeout(() => {
+          console.warn(`SSH connection timed out for ${serverName}`);
+          debugLog(`${serverName}: timeout after ${timeout}ms`);
+          conn.destroy();
+          cleanup();
+          if (!settled) {
+            settled = true;
+            resolve({ success: false, sshDown: true });
+          }
+        }, timeout);
+      }
     });
   }
 
@@ -151,6 +203,8 @@ class SSHOperations {
 
   async getServerStatus(serverName) {
     const serverConfig = this.config[serverName];
+
+    debugLog(`Checking status for ${serverName} on ${serverConfig.host}`);
     
     // Use the cached screen sessions if they exist for this host and are recent
     const host = serverConfig.host;
@@ -165,8 +219,8 @@ class SSHOperations {
     }
     
     const statusCommand = 'screen -ls';
-    const result = await this.executeCommand(serverName, statusCommand);
-    
+    const result = await this.executeCommand(serverName, statusCommand, 500);
+
     if (!result.success) {
       return { success: false, sshDown: true };
     }
@@ -192,6 +246,10 @@ class SSHOperations {
       timestamp: now,
       sessions: screenSessions
     };
+
+    debugLog(
+      `${serverName}: sessions on ${host} -> ${screenSessions.join(', ')}`
+    );
     
     return {
       success: true,
@@ -202,7 +260,7 @@ class SSHOperations {
   // Get status for all servers on a given host in one call
   async getBatchServerStatus(host) {
     // Find a server from this host to execute the command
-    const serverName = Object.keys(this.config).find(name => 
+    const serverName = Object.keys(this.config).find(name =>
       this.config[name].host === host
     );
     
@@ -210,8 +268,9 @@ class SSHOperations {
       return { success: false, error: `No server configured for host ${host}` };
     }
     
+    debugLog(`Batch status for host ${host} using ${serverName}`);
     const statusCommand = 'screen -ls';
-    const result = await this.executeCommand(serverName, statusCommand);
+    const result = await this.executeCommand(serverName, statusCommand, 500);
     
     if (!result.success) {
       return { success: false, sshDown: true, host };
@@ -236,6 +295,7 @@ class SSHOperations {
       timestamp: now,
       sessions: screenSessions
     };
+    debugLog(`Host ${host} sessions: ${screenSessions.join(', ')}`);
     
     return { success: true, host, sessions: screenSessions };
   }
