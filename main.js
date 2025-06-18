@@ -287,3 +287,45 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
   return result;
 });
 
+ipcMain.handle('get-afl-config', async (event, host) => {
+  if (host) {
+    const result = await sshOps.getRemoteAflConfig(host);
+    return result.success ? result.data : {};
+  }
+  const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
+  try {
+    const data = await fs.readFile(cfgPath, 'utf8');
+    return JSON.parse(data);
+  } catch (_) {
+    return {};
+  }
+});
+
+ipcMain.handle('save-afl-config', async (event, host, cfg) => {
+  if (host) {
+    return await sshOps.saveRemoteAflConfig(host, cfg);
+  }
+  const cfgPath = path.join(app.getPath('home'), '.afl', 'config.json');
+  try {
+    let data = {};
+    try {
+      const existing = await fs.readFile(cfgPath, 'utf8');
+      data = JSON.parse(existing);
+    } catch (_) {
+      // ignore read errors, assume new file
+    }
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const micros = String(now.getMilliseconds() * 1000).padStart(6, '0');
+    const ts = `${String(now.getFullYear()).slice(-2)}/${pad(now.getDate())}/${pad(now.getMonth() + 1)} ` +
+               `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${micros}`;
+    data[ts] = cfg;
+    await fs.mkdir(path.dirname(cfgPath), { recursive: true });
+    await fs.writeFile(cfgPath, JSON.stringify(data, null, 2));
+    return { success: true };
+  } catch (err) {
+    console.error('Error saving AFL config:', err);
+    return { success: false, error: err.message };
+  }
+});
+

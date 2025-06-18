@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Updated path for xterm after package moved to @xterm scope -->
     <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="node_modules/jsoneditor/dist/jsoneditor.min.css" />
     <title>Server Control Panel</title>
     <style>
         body {
@@ -30,12 +31,20 @@
             flex-direction: column;
             align-items: center;
             padding-top: 10px;
+            position: relative;
+            height: 100%;
         }
 
         #tab-list {
             list-style: none;
             padding: 0;
             margin: 0;
+            width: 100%;
+        }
+
+        #settings-tab {
+            position: absolute;
+            bottom: 10px;
             width: 100%;
         }
 
@@ -489,6 +498,7 @@
             text-decoration: none;
             cursor: pointer;
         }
+
     </style>
 </head>
 <body>
@@ -521,6 +531,14 @@
                     <p>SSH Key Path: <span id="ssh-key-path" class="path-display"></span></p>
                     <button id="set-ssh-key-path-btn">Set SSH Key Path</button>
                 </div>
+            </div>
+
+            <div id="settings-panel" style="display:none; padding:20px; overflow:auto; flex:1;">
+                <h2>Settings</h2>
+                <label for="config-host-select">Host:</label>
+                <select id="config-host-select"></select>
+                <div id="afl-config-editor"></div>
+                <button id="save-afl-config-btn">Save Settings</button>
             </div>
 
             <div id="webview-container">
@@ -609,7 +627,6 @@
     <!-- Updated script paths for @xterm packages -->
     <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
     <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
-   
     <script src="renderer.js"></script>
 </body>
 </html>

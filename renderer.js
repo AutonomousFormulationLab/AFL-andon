@@ -2,6 +2,7 @@
 const { ipcRenderer } = require('electron');
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
+const JSONEditor = require('jsoneditor');
 // Use the built-in fetch in recent Node versions. node-fetch remains as a
 // fallback for older environments but may throw if imported directly.
 let fetchFn;
@@ -14,6 +15,21 @@ try {
 }
 let config;
 let editingServer = null;
+let aflConfig = {};
+let aflConfigEditor;
+let selectedAflHost = null;
+
+function parseAflTimestamp(key) {
+  try {
+    const [datePart, timePart] = key.split(' ');
+    const [yy, dd, mm] = datePart.split('/').map(Number);
+    const [hh, mi, secPart] = timePart.split(':');
+    const ss = Number(secPart.split('.')[0]);
+    return new Date(2000 + yy, mm - 1, dd, Number(hh), Number(mi), ss).getTime();
+  } catch (_) {
+    return 0;
+  }
+}
 
 let sshStream;
 
@@ -105,6 +121,64 @@ function closeTerminalModal() {
 
 async function loadConfig() {
   config = await ipcRenderer.invoke('get-config');
+}
+
+async function loadAflConfig() {
+  if (!selectedAflHost) return;
+  const fullCfg = await ipcRenderer.invoke('get-afl-config', selectedAflHost);
+  let latestKey = null;
+  Object.keys(fullCfg).forEach(k => {
+    if (!latestKey || parseAflTimestamp(k) > parseAflTimestamp(latestKey)) {
+      latestKey = k;
+    }
+  });
+  aflConfig = latestKey ? fullCfg[latestKey] : {};
+  renderAflConfigEditor();
+}
+
+function renderAflConfigEditor() {
+  const container = document.getElementById('afl-config-editor');
+  if (!container) return;
+  if (!aflConfigEditor) {
+    aflConfigEditor = new JSONEditor(container, {
+      mode: 'tree',
+      mainMenuBar: false,
+      navigationBar: false,
+      statusBar: false
+    });
+  }
+  aflConfigEditor.set(aflConfig);
+}
+
+async function saveAflConfig() {
+  if (!selectedAflHost) return;
+  if (aflConfigEditor) {
+    aflConfig = aflConfigEditor.get();
+  }
+  await ipcRenderer.invoke('save-afl-config', selectedAflHost, aflConfig);
+  alert('Settings saved');
+  await loadAflConfig();
+}
+
+function populateAflHostSelect() {
+  const select = document.getElementById('config-host-select');
+  if (!select) return;
+  select.innerHTML = '';
+  const hosts = Array.from(new Set(Object.values(config || {}).map(c => c.host)));
+  hosts.forEach(h => {
+    const opt = document.createElement('option');
+    opt.value = h;
+    opt.textContent = h;
+    select.appendChild(opt);
+  });
+  if (hosts.length && !selectedAflHost) {
+    selectedAflHost = hosts[0];
+    select.value = selectedAflHost;
+  }
+  select.onchange = async () => {
+    selectedAflHost = select.value;
+    await loadAflConfig();
+  };
 }
 
 
@@ -317,6 +391,16 @@ function createServerTabs() {
     li.onclick = () => openServerWebview(serverName);
     tabList.appendChild(li);
   });
+  const settingsLi = document.createElement('li');
+  settingsLi.className = 'tab-item';
+  settingsLi.id = 'settings-tab';
+  settingsLi.dataset.server = 'settings';
+  const settingsIcon = document.createElement('div');
+  settingsIcon.className = 'tab-icon status-white';
+  settingsIcon.textContent = '⚙️';
+  settingsLi.appendChild(settingsIcon);
+  settingsLi.onclick = openSettingsPanel;
+  tabList.appendChild(settingsLi);
 }
 
 function updateTabStatus(serverName, queueResult) {
@@ -349,11 +433,18 @@ function setActiveTab(name) {
   if (tab) tab.classList.add('selected');
   const andon = document.getElementById('andon-panel');
   const webviewContainer = document.getElementById('webview-container');
+  const settings = document.getElementById('settings-panel');
   if (name === 'andon') {
     webviewContainer.style.display = 'none';
+    settings.style.display = 'none';
     andon.style.display = 'block';
+  } else if (name === 'settings') {
+    andon.style.display = 'none';
+    webviewContainer.style.display = 'none';
+    settings.style.display = 'block';
   } else {
     andon.style.display = 'none';
+    settings.style.display = 'none';
     webviewContainer.style.display = 'flex';
   }
 }
@@ -380,6 +471,12 @@ function openServerWebview(serverName) {
 
 function closeServerWebview() {
   openAndonPanel();
+}
+
+async function openSettingsPanel() {
+  populateAflHostSelect();
+  await loadAflConfig();
+  setActiveTab('settings');
 }
 
 
@@ -715,6 +812,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('set-config-path-btn').addEventListener('click', setConfigPath);
   document.getElementById('save-config-btn').addEventListener('click', saveConfig);
   document.getElementById('set-ssh-key-path-btn').addEventListener('click', setSshKeyPath);
+  const saveAflBtn = document.getElementById('save-afl-config-btn');
+  if (saveAflBtn) {
+    saveAflBtn.addEventListener('click', saveAflConfig);
+  }
 
   document.getElementById('webview-back').addEventListener('click', () => {
     const wv = document.getElementById('server-webview');
