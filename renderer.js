@@ -365,6 +365,12 @@ function openAndonPanel() {
 }
 
 function openServerWebview(serverName) {
+  const tabIcon = document.querySelector(
+    `.tab-item[data-server="${serverName}"] .tab-icon`
+  );
+  if (tabIcon && tabIcon.classList.contains('status-red')) {
+    return; // server down - don't change tabs
+  }
   const serverConfig = config[serverName];
   setActiveTab(serverName);
   const webview = document.getElementById('server-webview');
