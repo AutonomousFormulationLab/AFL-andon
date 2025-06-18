@@ -125,7 +125,14 @@ async function loadConfig() {
 
 async function loadAflConfig() {
   if (!selectedAflHost) return;
-  const fullCfg = await ipcRenderer.invoke('get-afl-config', selectedAflHost);
+  console.log(`Loading AFL config from ${selectedAflHost}`);
+  const result = await ipcRenderer.invoke('get-afl-config', selectedAflHost);
+  if (!result.success) {
+    console.error('Failed to load AFL config:', result.error);
+    alert(`Failed to load config: ${result.error}`);
+    return;
+  }
+  const fullCfg = result.data || {};
   let latestKey = null;
   Object.keys(fullCfg).forEach(k => {
     if (!latestKey || parseAflTimestamp(k) > parseAflTimestamp(latestKey)) {
@@ -155,8 +162,15 @@ async function saveAflConfig() {
   if (aflConfigEditor) {
     aflConfig = aflConfigEditor.get();
   }
-  await ipcRenderer.invoke('save-afl-config', selectedAflHost, aflConfig);
-  alert('Settings saved');
+  console.log(`Saving AFL config to ${selectedAflHost}`);
+  const res = await ipcRenderer.invoke('save-afl-config', selectedAflHost, aflConfig);
+  if (res && res.success) {
+    alert('Settings saved');
+  } else {
+    const errMsg = res && res.error ? res.error : 'unknown error';
+    console.error('Failed to save AFL config:', errMsg);
+    alert(`Failed to save settings: ${errMsg}`);
+  }
   await loadAflConfig();
 }
 
