@@ -44,3 +44,7 @@ npm run build
 ```
 
 See `package.json` for platform-specific build scripts.
+The CI workflow produces installers for each OS:
+* macOS: DMG
+* Linux: AppImage
+* Windows: NSIS exe

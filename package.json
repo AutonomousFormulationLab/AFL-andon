@@ -7,9 +7,9 @@
     "start": "electron .",
     "dev": "electron . --debug",
     "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
+    "build:win": "electron-builder --win nsis",
+    "build:mac": "electron-builder --mac dmg",
+    "build:linux": "electron-builder --linux AppImage",
     "check-package": "node scripts/validate-package.js"
   },
   "repository": {
@@ -44,6 +44,7 @@
     "appId": "gov.nist.AFL-andon",
     "productName": "AFL Andon",
     "mac": {
+      "target": ["dmg"],
       "category": "public.app-category.utilities",
       "icon": "assets/icons/mac/icon.icns"
     },
@@ -54,10 +55,7 @@
       "icon": "assets/icons/win/icon.ico"
     },
     "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
+      "target": ["AppImage"],
       "icon": "assets/icons/png/512x512.png",
       "category": "Utility"
     }
