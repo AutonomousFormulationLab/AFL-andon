@@ -199,13 +199,17 @@ function populateAflHostSelect() {
 async function fetchQueueState(serverName) {
   const serverConfig = config[serverName];
   if (!serverConfig) return { ok: false, state: null };
-  const url = `http://${serverConfig.host}:${serverConfig.httpPort}/queue_state`;
+  const url = serverConfig.status_url ||
+              `http://${serverConfig.host}:${serverConfig.httpPort}/queue_state`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 500);
   try {
     const response = await fetchFn(url, { signal: controller.signal });
     if (!response.ok) {
       return { ok: false, state: null };
+    }
+    if (serverConfig.device) {
+      return { ok: true, state: null };
     }
     let state;
     try {
@@ -252,7 +256,9 @@ function updateServerStatusUI(serverName, screenResult, queueResult) {
   
   if (httpStatusElement) {
     if (queueResult.ok) {
-      httpStatusElement.textContent = queueResult.state;
+      const serverCfg = config[serverName] || {};
+      const text = serverCfg.device ? 'UP' : queueResult.state;
+      httpStatusElement.textContent = text;
       httpStatusElement.className = 'status-indicator status-up';
     } else {
       httpStatusElement.textContent = 'UNREACHABLE';
@@ -423,18 +429,23 @@ function updateTabStatus(serverName, queueResult) {
   tab.classList.remove('status-green','status-blue','status-yellow','status-red');
   let cls = 'status-red';
   if (queueResult.ok) {
-    switch ((queueResult.state || '').toLowerCase()) {
-      case 'paused':
-        cls = 'status-yellow';
-        break;
-      case 'active':
-        cls = 'status-blue';
-        break;
-      case 'ready':
-        cls = 'status-green';
-        break;
-      default:
-        cls = 'status-red';
+    const serverCfg = config[serverName] || {};
+    if (serverCfg.device) {
+      cls = 'status-green';
+    } else {
+      switch ((queueResult.state || '').toLowerCase()) {
+        case 'paused':
+          cls = 'status-yellow';
+          break;
+        case 'active':
+          cls = 'status-blue';
+          break;
+        case 'ready':
+          cls = 'status-green';
+          break;
+        default:
+          cls = 'status-red';
+      }
     }
   }
   tab.classList.add(cls);
@@ -479,7 +490,9 @@ function openServerWebview(serverName) {
   const serverConfig = config[serverName];
   setActiveTab(serverName);
   const webview = document.getElementById('server-webview');
-  webview.src = `http://${serverConfig.host}:${serverConfig.httpPort}/`;
+  const url = serverConfig.webview_url ||
+              `http://${serverConfig.host}:${serverConfig.httpPort}/`;
+  webview.src = url;
   activeTab = serverName;
 }
 
@@ -594,6 +607,9 @@ function openServerModal(serverName = null) {
     form.elements['server-module'].value = server.server_module || '';
     form.elements['server-shell'].value = server.shell || 'bash';
     form.elements['server-conda-env'].value = server.conda_env || '';
+    form.elements['server-device'].checked = !!server.device;
+    form.elements['server-status-url'].value = server.status_url || '';
+    form.elements['server-webview-url'].value = server.webview_url || '';
     form.elements['server-active'].checked = server.active;
     form.elements['server-name'].disabled = true;
   } else {
@@ -602,6 +618,9 @@ function openServerModal(serverName = null) {
     form.elements['server-name'].disabled = false;
     form.elements['server-type'].value = 'script';
     form.elements['server-shell'].value = 'bash';
+    form.elements['server-device'].checked = false;
+    form.elements['server-status-url'].value = '';
+    form.elements['server-webview-url'].value = '';
     form.elements['server-active'].checked = true;
   }
 
@@ -625,7 +644,8 @@ async function handleServerFormSubmit(event) {
     httpPort: parseInt(form.elements['server-http-port'].value, 10),
     screen_name: form.elements['server-screen-name'].value,
     shell: form.elements['server-shell'].value,
-    active: form.elements['server-active'].checked
+    active: form.elements['server-active'].checked,
+    device: form.elements['server-device'].checked
   };
 
   const serverType = form.elements['server-type'].value;
@@ -638,6 +658,15 @@ async function handleServerFormSubmit(event) {
   const condaEnv = form.elements['server-conda-env'].value;
   if (condaEnv) {
     serverConfig.conda_env = condaEnv;
+  }
+
+  const statusUrl = form.elements['server-status-url'].value;
+  if (statusUrl) {
+    serverConfig.status_url = statusUrl;
+  }
+  const webviewUrl = form.elements['server-webview-url'].value;
+  if (webviewUrl) {
+    serverConfig.webview_url = webviewUrl;
   }
 
   if (editingServer) {

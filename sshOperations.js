@@ -34,6 +34,7 @@ class SSHOperations {
         if (!server.httpPort) server.httpPort = 5000;
         if (!server.shell) server.shell = 'bash';
         if (!('active' in server)) server.active = true;
+        if (!('device' in server)) server.device = false;
         if (!server.username) {
           console.warn(`Username not specified for server ${serverName}. Using current user.`);
           server.username = require('os').userInfo().username;
