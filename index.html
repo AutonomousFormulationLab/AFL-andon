@@ -8,6 +8,10 @@
     <link rel="stylesheet" href="node_modules/jsoneditor/dist/jsoneditor.min.css" />
     <title>Server Control Panel</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
@@ -16,6 +20,7 @@
             margin: 0;
             background-color: #f4f4f4;
             height: 100vh;
+            overflow: hidden;
         }
 
         .layout {
@@ -33,6 +38,7 @@
             padding-top: 10px;
             position: relative;
             height: 100%;
+            overflow-y: auto;
         }
 
         #tab-list {
@@ -113,6 +119,7 @@
             flex-direction: column;
             flex: 1;
             padding: 20px;
+            overflow-y: auto;
         }
 
         #app {
